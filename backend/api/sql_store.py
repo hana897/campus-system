@@ -100,6 +100,16 @@ class StoredFile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class MediaFileRecord(Base):
+    """Uploaded Django media (asset images, QR codes, documents) kept in the database."""
+    __tablename__ = "scsams_media_files"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    mime_type: Mapped[str] = mapped_column(String(120))
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 def ensure_tables():
     Base.metadata.create_all(engine)
     with SessionLocal() as session:

@@ -3,7 +3,7 @@ Django settings for config project.
 """
 
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 import os
 
 # --------------------------------------------------
@@ -39,6 +39,15 @@ ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "").s
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
+# Vercel provides the deployment, branch, and production hostnames.
+ON_VERCEL = bool(os.environ.get("VERCEL"))
+for _var in ("VERCEL_URL", "VERCEL_BRANCH_URL", "VERCEL_PROJECT_PRODUCTION_URL"):
+    if os.environ.get(_var):
+        ALLOWED_HOSTS.append(os.environ[_var])
+
+# Public address of the React site; QR codes link to its verification page.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "").rstrip("/")
 
 CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS if h not in {"localhost", "127.0.0.1"}]
 
@@ -133,6 +142,10 @@ def _build_database_settings():
         os.environ["PGPASSWORD"] = unquote(parsed.password or "")
         os.environ["PGHOST"] = parsed.hostname or ""
         os.environ["PGPORT"] = str(parsed.port or 5432)
+        # libpq reads PGSSLMODE for both Django and SQLAlchemy connections.
+        sslmode = parse_qs(parsed.query).get("sslmode")
+        if sslmode:
+            os.environ["PGSSLMODE"] = sslmode[0]
 
     pg_db = os.environ.get("PGDATABASE", "campus_securitydb")
     pg_user = os.environ.get("PGUSER", "postgres")
@@ -210,10 +223,21 @@ STATICFILES_DIRS = [
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# "database" keeps uploads in Postgres for hosts whose disk is read-only or wiped on deploy.
+MEDIA_STORAGE = os.environ.get("MEDIA_STORAGE", "database" if ON_VERCEL else "filesystem")
+
 STORAGES = {
-    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "default": {
+        "BACKEND": "config.storage.DatabaseStorage" if MEDIA_STORAGE == "database"
+        else "django.core.files.storage.FileSystemStorage",
+    },
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
+
+# Vercel has no build step to run collectstatic, so serve straight from the app directories.
+if ON_VERCEL:
+    STORAGES["staticfiles"] = {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}
+    WHITENOISE_USE_FINDERS = True
 
 
 # --------------------------------------------------
