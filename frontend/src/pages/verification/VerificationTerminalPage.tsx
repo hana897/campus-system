@@ -1,16 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useSecurity } from '../../context/SecurityContext';
 import { verificationService } from '../../services/verificationService';
 import { AuthenticatedImage } from '../../components/common/AuthenticatedImage';
 import { Asset, VerificationLog } from '../../types';
-import { assetCodeSchema } from '../../utils/validation';
+import { assetCodeSchema, extractAssetCode } from '../../utils/validation';
 import { AlertCircle, Barcode, CalendarDays, Camera, Check, ChevronRight, Clock3, Eye, Home, Info, MapPin, QrCode, Search, ShieldCheck, UserRound, X } from 'lucide-react';
 
 export const VerificationTerminalPage: React.FC = () => {
   const { currentGate, currentUser, showToast } = useSecurity();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [inputCode, setInputCode] = useState('');
   const [activeTab, setActiveTab] = useState<'scan' | 'code'>('scan');
   const [isScanning, setIsScanning] = useState(false);
@@ -68,6 +69,14 @@ export const VerificationTerminalPage: React.FC = () => {
     }
   };
 
+  // QR codes open /verification?code=AST-0001; verify that asset straight away.
+  useEffect(() => {
+    const linkedCode = searchParams.get('code');
+    if (!linkedCode) return;
+    setSearchParams({}, { replace: true });
+    void handleVerify(linkedCode);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!isScanning) return;
     let disposed = false;
@@ -76,7 +85,7 @@ export const VerificationTerminalPage: React.FC = () => {
     scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 220, height: 220 } }, (decoded) => {
       if (disposed) return;
       setIsScanning(false);
-      void handleVerify(decoded);
+      void handleVerify(extractAssetCode(decoded));
     }, () => undefined).catch((error: unknown) => {
       if (!disposed) {
         setIsScanning(false);

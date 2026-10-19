@@ -23,6 +23,20 @@ export const assetCodeSchema = z
   .min(1, 'Asset code is required.')
   .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/, 'Asset code can only contain letters, numbers, and hyphens.');
 
+/** Pulls the asset code out of scanned QR text: a bare code, a `?code=` link, or a legacy `/verification/<code>/` link. */
+export const extractAssetCode = (text: string): string => {
+  const trimmed = text.trim();
+  try {
+    const url = new URL(trimmed);
+    const fromQuery = url.searchParams.get('code');
+    if (fromQuery) return fromQuery;
+    const segments = url.pathname.split('/').filter(Boolean);
+    return segments[segments.length - 1] ?? trimmed;
+  } catch {
+    return trimmed;
+  }
+};
+
 export const incidentSchema = z.object({
   title: z.string().trim().min(5, 'Incident title must be at least 5 characters long.').max(120, 'Incident title is too long.'),
   assetId: z.string().trim().min(3, 'Asset ID is required.').max(80, 'Asset ID is too long.'),

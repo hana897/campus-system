@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppShell } from '../components/layout/AppShell';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
@@ -17,7 +17,8 @@ import { useSecurity } from '../context/SecurityContext';
 
 const AuthenticatedShell: React.FC = () => {
   const { isAuthenticated } = useSecurity();
-  return isAuthenticated ? <AppShell /> : <Navigate to="/login" replace />;
+  const location = useLocation();
+  return isAuthenticated ? <AppShell /> : <Navigate to="/login" replace state={{ from: location }} />;
 };
 
 const SuperAdminSettings: React.FC = () => {

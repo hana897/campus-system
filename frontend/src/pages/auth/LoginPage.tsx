@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import type { Location } from 'react-router-dom';
 import { Box, Eye, EyeOff, LockKeyhole, LogIn, QrCode, Shield, ShieldCheck, Mail } from 'lucide-react';
 import { authService } from '../../services/authService';
 import { useSecurity } from '../../context/SecurityContext';
@@ -7,6 +8,7 @@ import { emailSchema, passwordSchema } from '../../utils/validation';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signIn, showToast } = useSecurity();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,7 +36,9 @@ export const LoginPage: React.FC = () => {
       const { user } = await authService.login(emailValidation.data, passwordValidation.data);
       signIn(user);
       showToast({ type: 'success', title: 'Welcome back', message: `Signed in as ${user.firstName} ${user.lastName}.` });
-      navigate('/dashboard');
+      // Return to the page that sent the user here (e.g. a scanned QR link).
+      const from = (location.state as { from?: Location } | null)?.from;
+      navigate(from ? `${from.pathname}${from.search}` : '/dashboard', { replace: true });
     } catch (err: any) {
       setError(err.message || 'Sign in failed. Check your details and try again.');
     } finally {

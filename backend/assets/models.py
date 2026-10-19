@@ -1,6 +1,7 @@
 import qrcode
 from io import BytesIO
 
+from django.conf import settings
 from django.core.files import File
 from django.db import models
 
@@ -135,9 +136,12 @@ class Asset(models.Model):
         # Generate QR Code
         if create_qr:
 
-            # URL that opens verification page
+            # URL that opens the React verification page, or the bare
+            # asset code when the site address is not configured
             verification_url = (
-                f"http://127.0.0.1:8000/verification/{self.asset_code}/"
+                f"{settings.FRONTEND_URL}/verification?code={self.asset_code}"
+                if settings.FRONTEND_URL
+                else self.asset_code
             )
 
 

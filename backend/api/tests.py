@@ -483,3 +483,97 @@ class ReportExportTests(TestCase):
         response = self._authorized_get("/api/reports/export/xlsx/")
 
         self.assertEqual(response.status_code, 400)
+
+
+DATABASE_MEDIA_STORAGES = {
+    "default": {"BACKEND": "config.storage.DatabaseStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+
+
+class DatabaseMediaStorageTests(TestCase):
+    """Uploads must work on hosts with a read-only disk (Vercel)."""
+
+    def setUp(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+
+        from api import sql_store
+
+        # Keep SQLAlchemy writes out of the developer's real database.
+        engine = create_engine(
+            "sqlite+pysqlite:///:memory:",
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+        for name, value in (("engine", engine), ("SessionLocal", session_factory)):
+            patcher = patch.object(sql_store, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_storage_round_trip(self):
+        from django.core.files.base import ContentFile
+
+        from config.storage import DatabaseStorage
+
+        storage = DatabaseStorage()
+        name = storage.save("assets/photo.png", ContentFile(b"png-bytes"))
+
+        self.assertTrue(storage.exists(name))
+        self.assertEqual(storage.size(name), len(b"png-bytes"))
+        self.assertEqual(storage.open(name).read(), b"png-bytes")
+        self.assertEqual(storage.url(name), "/media/assets/photo.png")
+
+        storage.delete(name)
+        self.assertFalse(storage.exists(name))
+
+    def test_media_route_serves_stored_file(self):
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+        from django.test import override_settings
+
+        with override_settings(STORAGES=DATABASE_MEDIA_STORAGES):
+            name = default_storage.save("owner_documents/id.pdf", ContentFile(b"%PDF-1.4 test"))
+            response = self.client.get(f"/media/{name}")
+            missing = self.client.get("/media/owner_documents/missing.pdf")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), b"%PDF-1.4 test")
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertEqual(missing.status_code, 404)
+
+    def test_asset_qr_code_links_to_frontend_verification_page(self):
+        from io import BytesIO
+
+        import qrcode
+        from django.test import override_settings
+        from PIL import Image
+
+        department = Department.objects.create(name="Physics")
+        owner = Owner.objects.create(
+            owner_type="STAFF",
+            owner_id="EMP-QR-01",
+            full_name="Qr Owner",
+            phone="+1 555 0102",
+            department=department,
+        )
+        category = AssetCategory.objects.create(name="Tablet")
+
+        with override_settings(STORAGES=DATABASE_MEDIA_STORAGES, FRONTEND_URL="https://campus.example.app"), \
+                patch("assets.models.qrcode.make", wraps=qrcode.make) as make_qr:
+            asset = Asset.objects.create(
+                asset_code="AST-QR-001",
+                asset_name="Qr tablet",
+                brand="Example",
+                model="Model Q",
+                serial_number="SERIAL-QR-001",
+                category=category,
+                owner=owner,
+                status="AUTHORIZED",
+            )
+            stored = asset.qr_code.open().read()
+
+        make_qr.assert_called_once_with("https://campus.example.app/verification?code=AST-QR-001")
+        self.assertEqual(Image.open(BytesIO(stored)).format, "PNG")
