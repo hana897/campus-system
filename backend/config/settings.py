@@ -3,6 +3,7 @@ Django settings for config project.
 """
 
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 import os
 
 # --------------------------------------------------
@@ -123,6 +124,16 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # --------------------------------------------------
 def _build_database_settings():
+    # A single DATABASE_URL (as Render shows it) overrides the PG* variables.
+    database_url = os.environ.get("DATABASE_URL", "")
+    if database_url:
+        parsed = urlparse(database_url)
+        os.environ["PGDATABASE"] = unquote(parsed.path.lstrip("/"))
+        os.environ["PGUSER"] = unquote(parsed.username or "")
+        os.environ["PGPASSWORD"] = unquote(parsed.password or "")
+        os.environ["PGHOST"] = parsed.hostname or ""
+        os.environ["PGPORT"] = str(parsed.port or 5432)
+
     pg_db = os.environ.get("PGDATABASE", "campus_securitydb")
     pg_user = os.environ.get("PGUSER", "postgres")
     pg_password = os.environ.get("PGPASSWORD", "")
