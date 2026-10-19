@@ -16,6 +16,10 @@ def _database_url():
     config = settings.DATABASES["default"]
     name = config["NAME"]
     if config["ENGINE"].endswith("sqlite3"):
+        # Django's test runner names its in-memory database "file:memorydb_...?mode=memory";
+        # pysqlite would otherwise create that name as a real file.
+        if str(name).startswith("file:") and "mode=memory" in str(name):
+            return "sqlite+pysqlite:///:memory:"
         return "sqlite+pysqlite:///" + str(name).replace("\\", "/")
     if config["ENGINE"].endswith("postgresql"):
         user = config.get("USER", "")
